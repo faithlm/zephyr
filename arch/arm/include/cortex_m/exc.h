@@ -95,12 +95,14 @@ static ALWAYS_INLINE bool _IsInIsr(void)
  */
 static ALWAYS_INLINE void _ExcSetup(void)
 {
+	//pendsv，可悬起异常，优先级设置为最低，一般用于任务上下文切换
 	NVIC_SetPriority(PendSV_IRQn, 0xff);
-
+	//系统服务调用,优先级为1
 #ifdef CONFIG_CPU_CORTEX_M_HAS_BASEPRI
 	NVIC_SetPriority(SVCall_IRQn, _EXC_SVC_PRIO);
 #endif
 
+	//下面的优先级都设置为0
 #ifdef CONFIG_CPU_CORTEX_M_HAS_PROGRAMMABLE_FAULT_PRIOS
 	NVIC_SetPriority(MemoryManagement_IRQn, _EXC_FAULT_PRIO);
 	NVIC_SetPriority(BusFault_IRQn, _EXC_FAULT_PRIO);
@@ -109,6 +111,7 @@ static ALWAYS_INLINE void _ExcSetup(void)
 	NVIC_SetPriority(SecureFault_IRQn, _EXC_FAULT_PRIO);
 #endif /* CONFIG_ARM_SECURE_FIRMWARE */
 
+	//使能异常中断
 	/* Enable Usage, Mem, & Bus Faults */
 	SCB->SHCSR |= SCB_SHCSR_USGFAULTENA_Msk | SCB_SHCSR_MEMFAULTENA_Msk |
 		      SCB_SHCSR_BUSFAULTENA_Msk;

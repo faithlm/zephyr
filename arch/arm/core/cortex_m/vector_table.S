@@ -23,6 +23,7 @@
 _ASM_FILE_PROLOGUE
 
 GDATA(_main_stack)
+//GDATA 类似于extern，声明_main_stack是一个全局符号
 
 SECTION_SUBSEC_FUNC(exc_vector_table,_vector_table_section,_vector_table)
 
@@ -33,7 +34,7 @@ SECTION_SUBSEC_FUNC(exc_vector_table,_vector_table_section,_vector_table)
      */
     .word _main_stack + CONFIG_MAIN_STACK_SIZE
 
-    .word __reset
+    .word __reset//复位以后，从__reset开始运行，在reSet.S中
     .word __nmi
 
     .word __hard_fault

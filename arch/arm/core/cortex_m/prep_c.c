@@ -51,9 +51,17 @@ static inline void switch_sp_to_psp(void)
 static inline void set_and_switch_to_psp(void)
 {
 	u32_t process_sp;
-
+	/*
+	*MSP：主堆栈指针，当程序复位后（开始运行后），一直到第一次任务切换完成前，使用的都是MSP，即：main函数运行时用的是MSP，运行OSStartHighRdy，运行PendSV程序，用的都是MSP。当main函数开始运行前，启动文件会给这个函数分配一个堆栈空间，像ucos给任务分配堆栈空间一样，用于保存main函数运行过程中变量的保存。此时MSP就指向了该堆栈的首地址。
+	*
+	*PSP:进程堆栈指针，切换任务之后PendSV服务程序中有ORR LR, LR, #0x04这句，意思就是PendSV中断返回后使用的PSP指针，此时PSP已经指向了所运行任务的堆栈，所以返回后就可以就接着该任务继续运行下去了。
+	*由于任何一个时刻都只能使用一个堆栈指针（SP），所以，如果在某一个时刻，需要读取或者改变另外一个堆栈指针的内容就得使用特定的指令：MSR和MRS
+	*/
+	//_interrupt_stack 在系统内核初始化期间，作为系统栈使用，因为在前面已经disable所有的interrupt
+	//将PSP置于栈顶,栈为满递减的
 	process_sp = (u32_t)&_interrupt_stack + CONFIG_ISR_STACK_SIZE;
 	__set_PSP(process_sp);
+	//sp切换后，必须加isb指令
 	switch_sp_to_psp();
 }
 
@@ -169,21 +177,27 @@ extern void _IntLibInit(void);
 void _PrepC(void)
 {
 #ifdef CONFIG_INIT_STACKS
-	init_stacks();
+	init_stacks();//初始化栈空间
 #endif
 	/*
 	 * Set PSP and use it to boot without using MSP, so that it
 	 * gets set to _interrupt_stack during initialization.
 	 */
 	set_and_switch_to_psp();
+	//重定位中断向量表，如果定义了CONFIG_XIP，那么VECTOR_ADDRESS的值就位0（ROM的起始地址），如果没有定义CONFIG_XIP，那么VECTOR_ADDRESS的值就位RAM的起始地址
 	relocate_vector_table();
+	//使能浮点运算
 	enable_floating_point();
+	//bss段清0，bss全局未初始化变量或者初始化为0的变量
 	z_bss_zero();
+	//将已初始化的全局变量从rom中copy到ram中
 	z_data_copy();
 #ifdef CONFIG_BOOT_TIME_MEASUREMENT
 	__start_time_stamp = 0U;
 #endif
+	//初始化中断，以确保在reset时，可以正常进行interrupt lock
 	_IntLibInit();
+	//初始化内核，准备执行C代码，此函数不会返回
 	z_cstart();
 	CODE_UNREACHABLE;
 }

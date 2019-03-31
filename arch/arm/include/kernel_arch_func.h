@@ -36,9 +36,13 @@ extern void z_arch_configure_dynamic_mpu_regions(struct k_thread *thread);
 
 static ALWAYS_INLINE void kernel_arch_init(void)
 {
+	//从psp切换为msp
 	_InterruptStackSetup();
+	//设置各异常优先级
 	_ExcSetup();
+	//使能硬件相关的错误，如0作为被除数
 	_FaultInit();
+	//发生中断时，认为时WFE唤醒事件，在cpu_idle.S中
 	_CpuIdleInit();
 }
 
@@ -58,6 +62,7 @@ z_arch_switch_to_main_thread(struct k_thread *main_thread,
 #endif
 
 	/* get high address of the stack, i.e. its start (stack grows down) */
+	//得到main的栈顶地址，栈向下增长
 	char *start_of_main_stack;
 
 #if defined(CONFIG_MPU_REQUIRES_POWER_OF_TWO_ALIGNMENT) && \
@@ -70,10 +75,11 @@ z_arch_switch_to_main_thread(struct k_thread *main_thread,
 		K_THREAD_STACK_BUFFER(main_stack) + main_stack_size;
 #endif
 	start_of_main_stack = (void *)STACK_ROUND_DOWN(start_of_main_stack);
-
+	
 #ifdef CONFIG_TRACING
 	z_sys_trace_thread_switched_out();
 #endif
+	//current指向main_thread
 	_current = main_thread;
 #ifdef CONFIG_TRACING
 	z_sys_trace_thread_switched_in();
@@ -102,6 +108,7 @@ z_arch_switch_to_main_thread(struct k_thread *main_thread,
 	 * Set PSP to the highest address of the main stack
 	 * before enabling interrupts and jumping to main.
 	 */
+	 //设置PSP的值为start_of_main_stack，设置BASEPRI寄存器的值为0，最后调用_thread_entry()函数，第一个参数为_main
 	__asm__ volatile (
 	"mov   r0,  %0     \n\t"   /* Store _main in R0 */
 	"msr   PSP, %1     \n\t"   /* __set_PSP(start_of_main_stack) */

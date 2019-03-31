@@ -61,10 +61,10 @@ SECTION_SUBSEC_FUNC(TEXT,_reset_section,__start)
 #endif
 
     /* lock interrupts: will get unlocked when switch to main task */
-    bl	lock_interrupts
+    bl	lock_interrupts //锁中断
 #ifdef CONFIG_WDOG_INIT
     /* board-specific watchdog initialization is necessary */
-    bl _WdogInit
+    bl _WdogInit //初始化看门狗
 #endif
 
     /*

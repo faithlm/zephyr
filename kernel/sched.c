@@ -330,8 +330,11 @@ static void update_cache(int preempt_ok)
 void z_add_thread_to_ready_q(struct k_thread *thread)
 {
 	LOCKED(&sched_spinlock) {
+		//调用z_priq_dumb_add，遍历就绪队列链表，将当前线程按优先级由高到低插入到该链表中。
 		_priq_run_add(&_kernel.ready_q.runq, thread);
+		//设置线程状态为_THREAD_QUEUED
 		z_mark_thread_as_queued(thread);
+		//立即更新cache，找到下一个要执行的线程
 		update_cache(0);
 	}
 }
@@ -794,6 +797,10 @@ int z_unpend_all(_wait_q_t *wait_q)
 
 void z_sched_init(void)
 {
+	//zephyr支持三种调度算法，分别是SCHED_DUMB（默认），即一个双向链表，SCHED_SCALABLE，即红黑树，SCHED_MULTIQ，即多队列。
+	//建议当线程数小于等于3时使用SCHED_DUMB，当线程数大于20时使用SCHED_SCALABLE。SCHED_SCALABLE的代码要比SCHED_DUMB多2K字节左右。
+	//SCHED_SCALABLE、SCHED_MULTIQ的速度都要比SCHED_DUMB快。另外，SCHED_MULTIQ是按优先级来存取的，目前最大只支持32个优先级。
+	//默认为DUMB
 #ifdef CONFIG_SCHED_DUMB
 	sys_dlist_init(&_kernel.ready_q.runq);
 #endif
@@ -813,6 +820,8 @@ void z_sched_init(void)
 #endif
 
 #ifdef CONFIG_TIMESLICING
+//时间片的初始化，当配置了时间片的值（大于0），并且线程的优先低于CONFIG_TIMESLICE_PRIORITY时，线程就会参与时间片轮转
+//即创建线程时会给它分配一个时间片，当时间片用完就把线程放到运行队列的最后。
 	k_sched_time_slice_set(CONFIG_TIMESLICE_SIZE,
 		CONFIG_TIMESLICE_PRIORITY);
 #endif

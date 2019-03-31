@@ -238,19 +238,22 @@ static void bg_thread_main(void *unused1, void *unused2, void *unused3)
 #else
 	static const unsigned int boot_delay;
 #endif
-
+	//初始化设备，类别为post_kernel
 	z_sys_device_do_config_level(_SYS_INIT_LEVEL_POST_KERNEL);
 #if CONFIG_STACK_POINTER_RANDOM
 	z_stack_adjust_initialized = 1;
 #endif
+	//若设置启动延时，则执行k_busy_wait此时cpu一直被占用
 	if (boot_delay > 0 && IS_ENABLED(CONFIG_MULTITHREADING)) {
 		printk("***** delaying boot " STRINGIFY(CONFIG_BOOT_DELAY)
 		       "ms (per build configuration) *****\n");
 		k_busy_wait(CONFIG_BOOT_DELAY * USEC_PER_MSEC);
 	}
+	//输出系统信息，即***** Booting Zephyr OS v1.14.0-rc1-1385-gf1741dab6c4b *****这一部分信息
 	PRINT_BOOT_BANNER();
 
 	/* Final init level before app starts */
+	//初始化application类别的设备驱动
 	z_sys_device_do_config_level(_SYS_INIT_LEVEL_APPLICATION);
 
 #ifdef CONFIG_CPLUSPLUS
@@ -261,6 +264,7 @@ static void bg_thread_main(void *unused1, void *unused2, void *unused3)
 	__do_init_array_aux();
 #endif
 
+	//遍历所以的静态创建的进程，若延时不为forever（即线程需要延时启动），将线程加入到超时队列中
 	z_init_static_threads();
 
 #ifdef CONFIG_SMP
@@ -270,12 +274,13 @@ static void bg_thread_main(void *unused1, void *unused2, void *unused3)
 #ifdef CONFIG_BOOT_TIME_MEASUREMENT
 	/* record timestamp for kernel's _main() function */
 	extern u64_t __main_time_stamp;
-
+	//记录从reset到进入main线程一共用了多久
 	__main_time_stamp = (u64_t)k_cycle_get_32();
 #endif
 
 	extern void main(void);
 
+	//进入main函数！！！！！！！！！！！
 	main();
 
 	/* Dump coverage data once the main() has exited. */
@@ -350,6 +355,7 @@ static void prepare_multithreading(struct k_thread *dummy_thread)
 #endif
 
 	/* _kernel.ready_q is all zeroes */
+//初始化线程调度器
 	z_sched_init();
 
 #ifndef CONFIG_SMP
@@ -362,19 +368,25 @@ static void prepare_multithreading(struct k_thread *dummy_thread)
 	 *   contain garbage, which would prevent the cache loading algorithm
 	 *   to work as intended
 	 */
+	 //ready_q.cache指向下一个要运行的线程，此处为main线程
 	_kernel.ready_q.cache = _main_thread;
 #endif
 
+	//创建main_thread线程，入口函数为 bg_thread_main
 	z_setup_new_thread(_main_thread, _main_stack,
 			  MAIN_STACK_SIZE, bg_thread_main,
 			  NULL, NULL, NULL,
 			  CONFIG_MAIN_THREAD_PRIORITY, K_ESSENTIAL, "main");
+
 	sys_trace_thread_create(_main_thread);
 
+	//在z_setup_new_thread设置线程状态为pre_started，这里进行清除
 	z_mark_thread_as_started(_main_thread);
+	//设置线程状态为ready状态，并加入链表中
 	z_ready_thread(_main_thread);
 
 #ifdef CONFIG_MULTITHREADING
+	//创建idlethread进程，和之前的main进程类似
 	init_idle_thread(_idle_thread, _idle_stack);
 	_kernel.cpus[0].idle_thread = _idle_thread;
 	sys_trace_thread_create(_idle_thread);
@@ -404,6 +416,7 @@ static void prepare_multithreading(struct k_thread *dummy_thread)
 		+ CONFIG_ISR_STACK_SIZE;
 #endif
 
+	//初始化timeout_q这个链表，用于时间片的计算
 	initialize_timeouts();
 
 }
@@ -477,8 +490,9 @@ sys_rand32_fallback:
 FUNC_NORETURN void z_cstart(void)
 {
 	/* gcov hook needed to get the coverage report.*/
+	//用于测试代码覆盖率,暂时不管
 	gcov_static_init();
-
+	//初始化log
 	if (IS_ENABLED(CONFIG_LOG)) {
 		log_core_init();
 	}
@@ -486,6 +500,7 @@ FUNC_NORETURN void z_cstart(void)
 	/* perform any architecture-specific initialization */
 	kernel_arch_init();
 
+	//定义一个虚假线程，暂时不清楚做什么	
 #ifdef CONFIG_MULTITHREADING
 	struct k_thread dummy_thread = {
 		 .base.thread_state = _THREAD_DUMMY,
@@ -498,10 +513,13 @@ FUNC_NORETURN void z_cstart(void)
 #endif
 
 #ifdef CONFIG_USERSPACE
+	//初始化应用程序区
 	z_app_shmem_bss_zero();
 #endif
 
 	/* perform basic hardware initialization */
+	//zephyr设备驱动，预初始化的硬件设备在此处初始化，DEVICE_AND_API_INIT
+	//设备初始化优先级有4个，kernel1，kernel2，post_kernel,app,比之前少了primary
 	z_sys_device_do_config_level(_SYS_INIT_LEVEL_PRE_KERNEL_1);
 	z_sys_device_do_config_level(_SYS_INIT_LEVEL_PRE_KERNEL_2);
 
@@ -510,7 +528,10 @@ FUNC_NORETURN void z_cstart(void)
 #endif
 
 #ifdef CONFIG_MULTITHREADING
+	//准备多进程环境
 	prepare_multithreading(&dummy_thread);
+
+	//
 	switch_to_main_thread();
 #else
 	bg_thread_main(NULL, NULL, NULL);
